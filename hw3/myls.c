@@ -11,23 +11,32 @@
 #define MAX_FILE_CNT 100
 #define MAX_FILE_PATH 1024
 #define MAX_FILE_NAME 50
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_SKY 	   "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
 
 struct option{
 	int opt_i;
 	int opt_l;
 	int opt_t;
+	int opt_a;
 }option;
 
 int total_blk = 0;
+int max_file_len = 0;
 
 int getFileStat(struct stat *i, char **, char *);
 void mode_to_str(mode_t , char *);
 void printLmode(char *, struct stat *);
+void printNormal(char *, struct stat *);
 void sortStat(struct stat *, char **, int, int);
+void check_color(char *);
 int is_dir(char *);
 void error(char *);
 
 int main(int argc, char *argv[]){
+	
 	struct stat *info = malloc(sizeof(struct stat)*MAX_FILE_CNT);
 	char *statName[MAX_FILE_CNT];
     char opt;
@@ -35,7 +44,7 @@ int main(int argc, char *argv[]){
 	int cnt = 0;
 	//입력에 i,l,t옵션이 존재하는 지 확인
 	//존재하면 해당 옵션변수를 1로 변경
-    while((opt = getopt(argc, argv, "ilt")) != -1){
+    while((opt = getopt(argc, argv, "ilta")) != -1){
         switch(opt){
             case 'i':
                 option.opt_i = 1;
@@ -46,6 +55,8 @@ int main(int argc, char *argv[]){
             case 't':
 				option.opt_t = 1;
                 break;
+			case 'a':
+				option.opt_a = 1;
         }
     }
 	//지정 디렉터리나 파일이 없을 경우 현재 디렉터리를 인자로 넣어준다.
@@ -65,20 +76,20 @@ int main(int argc, char *argv[]){
 	for(int i=0; i<cnt; i++){
 		//-i옵션이 있을 경우 앞에 inode번호를 출력한다.
 		if(option.opt_i)
-			printf("%.ld ",info[i].st_ino);
+			printf("%7ld ",info[i].st_ino);
 		//-l 옵션이 있을 경우 printLmode함수를 호출하여 stat구조체의 모든 맴버의 상세 정보를 출력한다.
 		if(option.opt_l){
 			printLmode(statName[i], info+i);
 		}else{
 			//-l 옵션이 아닌 경우 단순 파일 이름 들만 출력한다.
-			printf("%.30s  ", statName[i]);
+			printNormal(statName[i], info+i);
 			//10번째 파일 항목마다 개행을 수행, 마지막 항목일 경우에도 개행
 			if((i%9 == 0 && i != 0) || i == (cnt-1))
 				putchar('\n');
 		}
 	}
 	free(info);
-
+//	printf("max : %d\n", max_file_len);
 	return 0;
 
 }
@@ -97,13 +108,15 @@ int getFileStat(struct stat *info, char **statName, char *input){
 				//절대 경로를 생성해준다.
 				sprintf(fPath, "%s/%s", input, dFile->d_name);
 				//숨김파일의 경우 list하지 않는다. 
-				if(dFile->d_name[0] == '.')
+				if(dFile->d_name[0] == '.' && option.opt_a != 1)
 					continue;	
 				//해당 파일의 stat구조체 확득
 				if(lstat( fPath, info+cnt) < 0)
 					error(dFile->d_name);
 				//statName에 현재 이름을 저장
 				statName[cnt] = dFile->d_name;
+				if(max_file_len < strlen(statName[cnt]))
+					max_file_len = strlen(statName[cnt]);
 				total_blk += (info+cnt)->st_blocks;
 				cnt++;
 			}	
@@ -150,7 +163,7 @@ void mode_to_str(mode_t mode, char *buf){
 		case S_IFIFO:
 			buf[0] = 'p';
 		case S_IFLNK:
-			buf[0] = '|';
+			buf[0] = 'l';
 			break;
 		case S_IFSOCK:
 			buf[0] = 's';
@@ -167,15 +180,41 @@ void printLmode(char *name, struct stat *info){
 	//-l 옵션 항목 출력
 	char str[11];
 	mode_to_str(info->st_mode, str);
-	printf("%s", str);
+
+	
+	printf("%s ", str);
 	printf("%2ld", info->st_nlink);
-	printf("%10s ", getpwuid(info->st_uid)->pw_name);
-	printf("%s ", getgrgid(info->st_gid)->gr_name);
-	printf("%5ld ", info->st_size);
+	printf(" %-9s ", getpwuid(info->st_uid)->pw_name);
+	printf("%-9s ", getgrgid(info->st_gid)->gr_name);
+	printf("%5ld  ", info->st_size);
 	printf("%.12s ", ctime(&info->st_mtime)+4);
-	printf("%s\n", name);
+	check_color(str);
+	printf( "%s" ANSI_COLOR_RESET, name);
+	if(str[0] == 'l'){
+		char *path = malloc(sizeof(char)*MAX_FILE_NAME);
+		memset(path, '\0', MAX_FILE_NAME);
+		readlink(name, path, MAX_FILE_NAME);
+		printf(" -> %s", path);
+	}
+	putchar('\n');
+}
+void printNormal(char *name, struct stat *info){
+
+	char str[11];
+	mode_to_str(info->st_mode, str);
+	check_color(str);
+	printf("%.30s  "ANSI_COLOR_RESET, name);
+	//printf("%.30s  "ANSI_COLOR_RESET, name);
 }
 
+void check_color(char *str){
+	if(str[0] == 'd')
+		printf(ANSI_COLOR_BLUE);
+	else if(str[0] == 'l')
+		printf(ANSI_COLOR_SKY);
+	else if(strchr(str, 'x'))
+		printf(ANSI_COLOR_GREEN);
+}
 void sortStat(struct stat *info, char **name, int cnt, int opt_t){
 	struct stat tmpStat;
 	char *tmpName;

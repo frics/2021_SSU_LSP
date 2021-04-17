@@ -11,10 +11,15 @@
 #define MAX_FILE_CNT 100
 #define MAX_FILE_PATH 1024
 #define MAX_FILE_NAME 50
-#define ANSI_COLOR_GREEN   "\x1b[32m"
-#define ANSI_COLOR_BLUE    "\x1b[34m"
-#define ANSI_COLOR_SKY 	   "\x1b[36m"
-#define ANSI_COLOR_RESET   "\x1b[0m"
+#define ANSI_COLOR_GREEN    "\x1b[92m"
+#define ANSI_COLOR_BLUE     "\x1b[94m"
+#define ANSI_COLOR_SKY 	    "\x1b[96m"
+#define ANSI_COLOR_BLACK    "\x1b[30m"
+#define ANSI_COLOR_RED_BACK "\x1b[41m"
+#define ANSI_COLOR_YEL_BACK "\x1b[43m"
+
+#define ANSI_COLOR_RESET    "\x1b[0m"
+
 
 struct option{
 	int opt_i;
@@ -31,7 +36,7 @@ void mode_to_str(mode_t , char *);
 void printLmode(char *, struct stat *);
 void printNormal(char *, struct stat *);
 void sortStat(struct stat *, char **, int, int);
-void check_color(char *);
+void check_color(mode_t);
 int is_dir(char *);
 void error(char *);
 
@@ -77,6 +82,7 @@ int main(int argc, char *argv[]){
 		//-i옵션이 있을 경우 앞에 inode번호를 출력한다.
 		if(option.opt_i)
 			printf("%7ld ",info[i].st_ino);
+			
 		//-l 옵션이 있을 경우 printLmode함수를 호출하여 stat구조체의 모든 맴버의 상세 정보를 출력한다.
 		if(option.opt_l){
 			printLmode(statName[i], info+i);
@@ -173,6 +179,17 @@ void mode_to_str(mode_t mode, char *buf){
 	//권한을 확인하여 저장
 	for(size_t i =1; i<10; i++)
 		buf[i] = (mode & (1 << (9-i))) ? chars[i] : '-';
+	//const int is[3] = {S_ISUID, S_ISGID, S_ISVTX};
+	const char ch[2][3] = {{'s', 's', 't'},
+				{'S', 'S', 'T'}};
+	for(int i=0; i<3; i++){
+		if(mode & (S_ISUID>>i)){
+			if(buf[(i+1)*3] == 'x')
+				buf[(i+1)*3] = ch[0][i];
+			else	
+				buf[(i+1)*3] = ch[1][i];
+		}
+	}
 	buf[10] = '\0';
 }
 
@@ -188,13 +205,20 @@ void printLmode(char *name, struct stat *info){
 	printf("%-9s ", getgrgid(info->st_gid)->gr_name);
 	printf("%5ld  ", info->st_size);
 	printf("%.12s ", ctime(&info->st_mtime)+4);
-	check_color(str);
+	check_color(info->st_mode);
 	printf( "%s" ANSI_COLOR_RESET, name);
 	if(str[0] == 'l'){
 		char *path = malloc(sizeof(char)*MAX_FILE_NAME);
 		memset(path, '\0', MAX_FILE_NAME);
-		readlink(name, path, MAX_FILE_NAME);
-		printf(" -> %s", path);
+		printf(" -> ");
+		if(readlink(name, path, MAX_FILE_NAME) < 0)
+			path = "can't find path";
+		else{
+			if(lstat( path, info) < 0)
+				error(path);
+			check_color(info->st_mode);
+		}
+		printf("%s"ANSI_COLOR_RESET, path);
 	}
 	putchar('\n');
 }
@@ -202,18 +226,26 @@ void printNormal(char *name, struct stat *info){
 
 	char str[11];
 	mode_to_str(info->st_mode, str);
-	check_color(str);
+	check_color(info->st_mode);
 	printf("%.30s  "ANSI_COLOR_RESET, name);
 	//printf("%.30s  "ANSI_COLOR_RESET, name);
 }
-
-void check_color(char *str){
-	if(str[0] == 'd')
+void check_color(mode_t mode){
+	for(int i=0; i<3; i++){
+		if(mode &(S_IXUSR >> i*3))
+			printf(ANSI_COLOR_GREEN);
+	}
+	if(S_ISDIR(mode))
 		printf(ANSI_COLOR_BLUE);
-	else if(str[0] == 'l')
+	else if(S_ISLNK(mode))
 		printf(ANSI_COLOR_SKY);
-	else if(strchr(str, 'x'))
-		printf(ANSI_COLOR_GREEN);
+	if(mode &(S_ISGID)){
+		printf(ANSI_COLOR_YEL_BACK);
+		printf(ANSI_COLOR_BLACK);
+	}if(mode & (S_ISUID)){
+		printf(ANSI_COLOR_RESET);
+		printf(ANSI_COLOR_RED_BACK);
+	}
 }
 void sortStat(struct stat *info, char **name, int cnt, int opt_t){
 	struct stat tmpStat;

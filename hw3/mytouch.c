@@ -3,17 +3,15 @@
 #include<fcntl.h> //creat()
 #include<utime.h> //utime()
 #include<unistd.h> //getopt()
-#include<sys/stat.h>
-#include<sys/types.h>
+#include<sys/stat.h> //umask()
+#include<sys/types.h> //mode_t
 
 int main(int argc, char *argv[]){
-    //
-    mode_t mode = 0666 - umask(0);
+
     while(getopt(argc, argv, "acdfhmrt") != -1);
    
-    printf("%#.4o\n", mode);
-
     if(utime(argv[optind], NULL) < 0){
+        mode_t mode = 0666 - umask(0);
         int fd;
         if((fd = creat(argv[optind], mode)) < 0){
             fprintf(stderr, "creat error for %s\n", argv[optind]);

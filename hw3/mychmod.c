@@ -5,8 +5,6 @@
 #include<errno.h> //errno
 #include<unistd.h> //getopt)()
 
-
-
 int main(int argc , char *argv[]){
 
     int mode = 0;
@@ -14,11 +12,10 @@ int main(int argc , char *argv[]){
     //옵션이 들어왔을 경우 무시하고 처리
     while(getopt(argc, argv, "cfvR") != -1);
 
-
     if(((ptr =strchr(argv[optind], '+')) != NULL) || 
     ((ptr =strchr(argv[optind], '-')) != NULL) || 
     ((ptr =strchr(argv[optind], '=')) != NULL)){
-        printf("string mode\n");
+       
         //ptr에 담긴 연산자를 op에 저장
         char op = ptr[0];
         //string으로 들어온 권한 설정을 확인하기 위해 
@@ -29,7 +26,7 @@ int main(int argc , char *argv[]){
         char *ugo = strtok(argv[optind], &op);
         char *rwx = strtok(NULL, &op);
         struct stat info;
-        char flag[3];
+        char flag[4] = { '0', };
         int to_change;
         //입력된 파일의 mode값을 받는다.
         if(lstat( argv[optind+1] , &info) < 0){
@@ -43,20 +40,32 @@ int main(int argc , char *argv[]){
         mode = info.st_mode;
         //파일 종류를 확인하는 bit를 없앤다.
         mode%=010000;
+        int check;
         //들어온 인자를 확인하여 flag에 저장
-        for(int i=0; i<3; i++){
-            int check= 0;
-            int div  = 1;
-
+        for(int i=0, check =0; i<3; i++){
+            check = 0;
+           // div  = 1;
             if(strchr(ugo, perm[0][i]) != NULL){
                 for(int j=0; j<3; j++){
-                    if(strchr(rwx, perm[1][j]) != NULL)
-                        check += (4/div);
-                    div *= 2;
+                    if(strchr(rwx, perm[1][j]) != NULL){
+                            check += 4/(j+1);
+                    }
+                    //div *= 2;
                 } 
             }
-            flag[i] = check+'0';
+            flag[i+1] = check+'0';
         }
+
+        for(int i=0, check =0; i<3; i++){
+            if(strchr(ugo, perm[0][i]) != NULL){ 
+                char ch = i<2 ? 's' : 't';
+                if((strchr(rwx, ch) != NULL)){
+                    check += (4/(i+1));
+                    flag[0] = check+'0';
+                }
+            }
+        }
+        
         //flag에 저장되어 있는 값을 8진수 형태로 to_change 변수에 담아준다.
         sscanf(flag, "%o", &to_change);
         //op에 들어와 있는 연산자 별로 올바른 연산을 수행한다.
@@ -85,10 +94,9 @@ int main(int argc , char *argv[]){
         exit(1);
     }
     //권한 변경 실행
-    if(chmod(argv[optind+1], mode) < 0)
+    if(chmod(argv[optind+1], mode) < 0){
         fprintf(stderr, "%s : chmod error : %s\n", argv[optind+1], strerror(errno));
-    
-    printf("%s changed %0o\n", argv[optind+1], mode);
+    }
     exit(0);
 }
 

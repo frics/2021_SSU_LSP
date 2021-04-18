@@ -29,7 +29,6 @@ struct option{
 }option;
 
 int total_blk = 0;
-int max_file_len = 0;
 
 int getFileStat(struct stat *i, char **, char *);
 void mode_to_str(mode_t , char *);
@@ -81,7 +80,7 @@ int main(int argc, char *argv[]){
 	for(int i=0; i<cnt; i++){
 		//-i옵션이 있을 경우 앞에 inode번호를 출력한다.
 		if(option.opt_i)
-			printf("%7ld ",info[i].st_ino);
+			printf("%-7ld ",info[i].st_ino);
 			
 		//-l 옵션이 있을 경우 printLmode함수를 호출하여 stat구조체의 모든 맴버의 상세 정보를 출력한다.
 		if(option.opt_l){
@@ -121,8 +120,6 @@ int getFileStat(struct stat *info, char **statName, char *input){
 					error(dFile->d_name);
 				//statName에 현재 이름을 저장
 				statName[cnt] = dFile->d_name;
-				if(max_file_len < strlen(statName[cnt]))
-					max_file_len = strlen(statName[cnt]);
 				total_blk += (info+cnt)->st_blocks;
 				cnt++;
 			}	
@@ -179,7 +176,7 @@ void mode_to_str(mode_t mode, char *buf){
 	//권한을 확인하여 저장
 	for(size_t i =1; i<10; i++)
 		buf[i] = (mode & (1 << (9-i))) ? chars[i] : '-';
-	//const int is[3] = {S_ISUID, S_ISGID, S_ISVTX};
+	
 	const char ch[2][3] = {{'s', 's', 't'},
 				{'S', 'S', 'T'}};
 	for(int i=0; i<3; i++){
@@ -198,7 +195,6 @@ void printLmode(char *name, struct stat *info){
 	char str[11];
 	mode_to_str(info->st_mode, str);
 
-	
 	printf("%s ", str);
 	printf("%2ld", info->st_nlink);
 	printf(" %-9s ", getpwuid(info->st_uid)->pw_name);
@@ -232,17 +228,25 @@ void printNormal(char *name, struct stat *info){
 }
 void check_color(mode_t mode){
 	for(int i=0; i<3; i++){
+		//user, group, other 중에 파일 실행 권한이 있을 경우
+		//초록색
 		if(mode &(S_IXUSR >> i*3))
 			printf(ANSI_COLOR_GREEN);
 	}
+	//디렉터리일 경우 파란색 -> 디렉터리의 경우 실행권한이 있어도 파란색으로 출력이 된다.
 	if(S_ISDIR(mode))
 		printf(ANSI_COLOR_BLUE);
+	//symbolic link 파일일 경우 하늘색으로 출력
 	else if(S_ISLNK(mode))
 		printf(ANSI_COLOR_SKY);
+	//GID bit이 설정되어 있을 경우 노란색 배경에 검은색 글씨로 출력
 	if(mode &(S_ISGID)){
 		printf(ANSI_COLOR_YEL_BACK);
 		printf(ANSI_COLOR_BLACK);
-	}if(mode & (S_ISUID)){
+	}
+	//uid bit이 설정 되어 있을 경우 빨간색 배경으로 출력
+	//uid, gid bit이 모두 설정되어 있을 경우 uid bit이 더 상위이다.
+	if(mode & (S_ISUID)){
 		printf(ANSI_COLOR_RESET);
 		printf(ANSI_COLOR_RED_BACK);
 	}

@@ -5,11 +5,11 @@
 
 
 int main(){
-	char *fname = "ssu_test.txt";
+	char *fname = "../ssu_test2.txt";
 	int fd;
 
 	if((fd=creat(fname, 0666))< 0 ){
-		printf("fuck %s\n", fname);
+		printf("creat error for %s\n", fname);
 		exit(1);
 	}
 

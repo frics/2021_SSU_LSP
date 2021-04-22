@@ -3,8 +3,10 @@
 
 
 void strmode(mode_t mode, char *buf){
+	//전체 권한
 	const char chars[] = "rwxrwxrwx";
 	for(size_t i =0; i<9; i++){
+		printf("%o\n", (1 << (8-i)));
 		buf[i] = (mode & (1 << (8-i))) ? chars[i] : '-';
 	}
 	buf[9] = '\0';

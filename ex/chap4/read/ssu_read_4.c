@@ -25,4 +25,8 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "open error for %s\n", argv[1]);
         exit(1);
     }
+
+    entry = 0;
+    offset = 0;
+    while(length = read)
 }

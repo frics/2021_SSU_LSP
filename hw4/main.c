@@ -22,6 +22,7 @@ int **input_matrix;
 
 int row=1, col = 1; //row, col의 default 크기는 1이다.
 
+//매번 프로세스 죽이고 살리고 ㅇ안할라면 signal 사용해라
 void read_matrix(int);
 void write_matrix(int, int**);
 void free_matrix(int **);
@@ -151,6 +152,12 @@ void read_matrix(int fd){
                 row++;
         }
     }
+
+    if(row > 10000 || col > 10000){
+        fprintf(stderr, "Invalid matrix size(%d, %d)\n", row, col);
+        exit(1);
+    }
+
     //읽어온 크기만큼의 배열을 동적할당한다.
     //다음 세대 matrix를 미리 할당한다.
     printf("alloc nex input\n");
@@ -182,6 +189,7 @@ void write_matrix(int gen, int **matrix){
     char filename[30];
     int row_size = col*2+1;
     char *rowbuf = malloc(sizeof(char)*row_size);
+    
     
     sprintf(filename, "gen_%d.matrix", gen);
 

@@ -6,10 +6,13 @@
 #include<sys/stat.h>
 #include<sys/types.h>
 #include<sys/wait.h>
-#include<sys/time.h>
+#include<time.h>
 #include<pthread.h>
 
-#define BUF_SIZE 512
+#include<sys/ipc.h>
+#include<sys/shm.h>
+
+#define BUF_SIZE 20000
 
 typedef struct _args {
     int start;
@@ -46,7 +49,7 @@ void print(int **matrix){
 
 int main(int argc, char *argv[]){
     int fd;
-    struct timeval start, end;
+    clock_t start, end;
     long long elapsed;
     int **next_matrix;
 
@@ -67,11 +70,11 @@ int main(int argc, char *argv[]){
             fprintf(stderr, "open error for %s\n", "input.matrix");
             exit(1);
         }
-        gettimeofday(&start, NULL);
+        start = clock();
         row = 1;
         col = 1;
         read_matrix(fd);
-    
+        // printf("row : %d, col : %d\n", row, col);
         switch(op){
             case 1:
                 printf("프로그램이 종료됩니다.\n");
@@ -83,8 +86,8 @@ int main(int argc, char *argv[]){
                      write_matrix(i, next_matrix);
                      input_matrix = next_matrix;
                 }
-                gettimeofday(&end, NULL);
-                elapsed = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;;
+                end = clock();
+                elapsed = (long long)end-start;
 		        printf("elapsed_time: %lld us\n", elapsed);
                 break;
             case 3:
@@ -95,14 +98,14 @@ int main(int argc, char *argv[]){
 
                 for(int i=1; i<=gen; i++){
                     next_matrix = proc_parallel(proc_thread, rows, input_matrix);
-                    print(next_matrix);
+                    //print(next_matrix);
                     write_matrix(i, next_matrix);
                     
                     input_matrix = next_matrix;
                 }
-                gettimeofday(&end, NULL);
-                elapsed = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;;
-		        printf("elapsed_time: %lld us\n", elapsed);
+                end = clock();
+                elapsed = (long long)end-start;
+                printf("elapsed_time: %lld us\n", elapsed);
                 free(rows);
                 break;
             case 4:
@@ -120,16 +123,19 @@ int main(int argc, char *argv[]){
                     free(input_matrix);
                     input_matrix = next_matrix;
                 }
-                gettimeofday(&end, NULL);
-                elapsed = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;;
+                end = clock();
+                elapsed = (long long)end-start;
 		        printf("elapsed_time: %lld us\n", elapsed);
                 free(rows);
+              //  if(shmctl(shmid, IPC_RMID, 0) == -1) 
                 break;
             default:
                 fprintf(stderr, "invalid input please enter again.\n");
                 getchar();
         }
-        free_matrix(input_matrix);
+       
+       
+      //  free_matrix(input_matrix);
         //free_matrix(next_matrix);
         
     }  
@@ -152,7 +158,7 @@ void read_matrix(int fd){
                 row++;
         }
     }
-
+    printf("row : %d, col %d\n", row, col);
     if(row > 10000 || col > 10000){
         fprintf(stderr, "Invalid matrix size(%d, %d)\n", row, col);
         exit(1);
@@ -160,14 +166,12 @@ void read_matrix(int fd){
 
     //읽어온 크기만큼의 배열을 동적할당한다.
     //다음 세대 matrix를 미리 할당한다.
-    printf("alloc nex input\n");
+   
     input_matrix = (int**)malloc(sizeof(int*)*row);
     
-   
     for(int i=0; i<row; i++)
         input_matrix[i] = (int *)malloc(sizeof(int)*col);
-       
-    
+    printf("alloc complete\n");
     //matrix의 값을 2차원 배열에 쓴다.
     lseek(fd, 0, SEEK_SET); //다시 파일을 읽기 전 offset 초기화
     memset(buf, '\0', BUF_SIZE);
@@ -270,38 +274,53 @@ int **proc_parallel(int proc_thread, int *rows, int **input_matrix){
 
     int **next_matrix;
     //next matrix 동적 할당
-    next_matrix = (int**)malloc(sizeof(int*)*row);
-    for(int i=0; i<row; i++)
-        next_matrix[i] = (int *)malloc(sizeof(int)*col);
+    // next_matrix = (int**)malloc(sizeof(int*)*row);
+    // for(int i=0; i<row; i++)
+    //     next_matrix[i] = (int *)malloc(sizeof(int)*col);
+    int *shmid = (int *)malloc(sizeof(int)*row);
+    int **memory_segment = (int **)malloc(sizeof(int *)*row);
+    for(int i=0; i<row; i++){
+        if((shmid[i] = shmget(0, sizeof(int)*row, IPC_CREAT|0666)) == -1){
+            fprintf(stderr, "shmget failed\n");
+            exit(0);
+        }
+       // printf("alloc suc\n");
+        if((memory_segment[i] = shmat(shmid[i], NULL, 0)) == (int*)-1){
+            fprintf(stderr, "shmat failed\n");
+            exit(0);
+        }
+        //printf("shared mem suc\n");
+    }
    
     int cnt = 0;
     for(int p=0, index=0; p<proc_thread; p++){
         
-        switch(vfork()){
+        switch(fork()){
             case 1:
                 printf("Fork fail\n");
                 break;
             case 0:
+                
                 for(int i = index; i < index+rows[p]; i++){
                     for(int j=0; j<col; j++){
                         cnt++;
-                        next_matrix[i][j] = check_live(i,j, input_matrix);
+                        memory_segment[i][j] = check_live(i,j, input_matrix);
                     }
                 }
-                _exit(1);
+               // printf("%d process finished\n", getpid());
+                exit(1);
             default:
-                //printf("Fork %dth Child Process\n", p);
+                //printf("Fork NEXT Child Process\n");
                 break;
         }
         index += rows[p];
     }
     int ret;
     while((ret = wait(NULL)) > 0);
-       // printf("ret : %d\n", ret);
-    //printf("cnt : %d\n", cnt);
+  
     
   // printf("all process exited\n");
-   return next_matrix;
+   return memory_segment;
 }
 void *run_thread(void *data){
     Args input = *((Args *)data);
@@ -313,7 +332,7 @@ void *run_thread(void *data){
     return 0;
 }
 int **thread_parallel(int proc_thread, int *rows, int **input_matrix){
-    printf("???????\n");
+   // printf("???????\n");
     pthread_t *thread;
     int **next_matrix;
     //thread 할당
@@ -343,12 +362,13 @@ int **thread_parallel(int proc_thread, int *rows, int **input_matrix){
     }
 
     for(int i=0; i<proc_thread; i++){
-        printf("non start : %d\nend : %d\n", input[i].start, input[i].end);
+       // printf("non start : %d\nend : %d\n", input[i].start, input[i].end);
         pthread_create(&thread[i], NULL, run_thread, (void *)&input[i]);
     }
+    
     for(int i=0; i<proc_thread; i++){
         pthread_join(thread[i], NULL);
-        printf("%d thread joined\n", i);
+       // printf("%d thread joined\n", i);
     }
     free(thread);
     free(input);

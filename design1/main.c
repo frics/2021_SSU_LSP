@@ -22,8 +22,10 @@ Args *input;
 
 char **input_matrix;
 char **next_matrix;
+int *rows;
 
 int gen;
+int **used_proc_thread;
 int row, col; //row, col의 default 크기는 1이다.
 
 //매번 프로세스 죽이고 살리고 ㅇ안할라면 signal 사용해라
@@ -41,10 +43,11 @@ void seq_process();
 
 int *rows_per_parallel(int);
 
-
-void proc_parallel(int, int*);
+void proc_parallel(int, int);
 void *run_thread(void *);
-void thread_parallel(int, int*);
+void thread_parallel(int, pthread_t*, int *);
+
+void print_used(int **, int);
 
 
 void print(char **matrix){
@@ -71,7 +74,7 @@ int main(int argc, char *argv[]){
     struct timeval start, end;
     long long elapsed;
     int op, proc_thread;
-    int *rows;
+  
 
     while(1){
         if(argc < 1){
@@ -91,8 +94,6 @@ int main(int argc, char *argv[]){
         scanf("%d", &gen);
         //row, col의 default 크기는 1이다.
         //시간 측정 시작
-       
-
         printf("row : %d, col :%d\n", row, col);
 
         switch(op){
@@ -119,27 +120,33 @@ int main(int argc, char *argv[]){
 
                 scanf("%d", &proc_thread);
                 getchar();
+
                 gettimeofday(&start, NULL);
                 read_matrix(argv[1]);
                 //process별 연산 행을 할당
                 rows = rows_per_parallel(proc_thread);
+
+                used_proc_thread = (int **)malloc(sizeof(int *)*gen);
+                for(int i=0; i<gen; i++)
+                    used_proc_thread[i]=(int *)malloc(sizeof(int)*proc_thread);
 
                  //공유 메모리 할당
                 int *shmid = (int *)malloc(sizeof(int)*row);
                 next_matrix = alloc_matrix(1, shmid);
                
                 for(int i=1; i<=gen; i++){
-                    proc_parallel(proc_thread, rows);
+                    proc_parallel(i-1, proc_thread);
                     write_matrix(i, next_matrix);
                     copy_matrix();
                 }
                 gettimeofday(&end, NULL);
                 elapsed = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)/1000;
+
+                print_used(used_proc_thread, proc_thread);
                 printf("elapsed_time: %lld ms\n", elapsed);
                 free(rows);
                 free_matrix(1, next_matrix, shmid);
                
-        
                 break;
             case 4:
                 printf("생성할 Thread의 개수를 입력하시오 : ");
@@ -150,19 +157,37 @@ int main(int argc, char *argv[]){
                 read_matrix(argv[1]);
                 //process별 연산 행을 할당
                 rows = rows_per_parallel(proc_thread);
+
+                used_proc_thread = (int **)malloc(sizeof(int *));
+                used_proc_thread[0] = (int *)malloc(sizeof(int)*proc_thread);
+                //thread 생성
+                pthread_t *thread = (pthread_t *)malloc(sizeof(pthread_t)*proc_thread);
+                int *thread_id = (int *)malloc(sizeof(int)*proc_thread);
+                for(int i=0; i<proc_thread; i++)  
+                    thread_id[i] = i;
+                
                 //입력된 세대 수만큼 연산
                 for(int i = 1; i <= gen; i++){
-                    thread_parallel(proc_thread, rows);
-                  //  write_matrix(i, next_matrix);
-                   // free_matrix(input_matrix);
-                    //input_matrix = next_matrix;
+                    thread_parallel(proc_thread, thread, thread_id);
+                    write_matrix(i, next_matrix);
+                    free_matrix(0, input_matrix, NULL);
+                    input_matrix = next_matrix;
                 }
                 gettimeofday(&end, NULL);
                 elapsed = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)/1000;
-
+                printf("Used Thread Id\n");
+                for(int i=0; i<proc_thread; i++){
+                    printf("%d", used_proc_thread[0][i]);
+                    if(i!=proc_thread-1)
+                        printf(", ");
+                    else
+                        printf("\ntotal : %d\n", proc_thread);
+                }
                 printf("elapsed_time: %lld ms\n", elapsed);
                 free_matrix(0, input_matrix, NULL);
                 free(rows);
+                free(thread);
+                free(thread_id);
                 break;
 
             default:
@@ -214,7 +239,7 @@ void free_matrix(int isShm, char **matrix, int *shmid){
 void read_matrix(char *filename){
     
     FILE *fp;
-    
+
     char *buf = (char *)malloc(sizeof(char)*BUF_SIZE);
 
     if((fp = fopen(filename, "r")) < 0 ){
@@ -319,20 +344,23 @@ void seq_process(){
 //process나 thread별 행을 할당한다.
 int *rows_per_parallel(int proc_thread){
     //process/thread 별 row갯수를 저장할 int형 배열 동적할당
-    int *rows = malloc(sizeof(int)*proc_thread);
-   //process/thread 별 담당 row 갯수 저장
+    int *_rows = malloc(sizeof(int)*proc_thread);
+    //process/thread 별 담당 row 갯수 저장
+    memset(_rows, '\0', sizeof(int)*proc_thread);
+
     for(int i=0, pos = 0; i<row; i++){
-        rows[pos++]++;
+        _rows[pos++]++;
         if(pos == proc_thread)
             pos = 0;
     }
-    return rows;
+    return _rows;
 }
 
-void proc_parallel(int proc_thread, int *rows) {
+void proc_parallel(int cur_gen, int proc_thread) {
 
     for(int p=0, index=0; p<proc_thread; p++){  
-        switch(fork()){
+        used_proc_thread[cur_gen][p] = fork();
+        switch(used_proc_thread[cur_gen][p]){
             case 1:
                 printf("Fork fail\n");
                 break;
@@ -344,55 +372,56 @@ void proc_parallel(int proc_thread, int *rows) {
                 }
                 exit(1);
             default:
-                //printf("Fork NEXT Child Process\n");
                 break;
         }
         index += rows[p];
     }
-    while((wait(NULL)) > 0);
-}
-void *run_thread(void *data){
 
-    //Args input = *((Args *)data);
+    while(wait(NULL)>0);
+}
+
+
+void *run_thread(void *data){
     int id = *((int *)data);
-    //print(input.next_matrix);
-    printf("id : %d\n", id);
-    // printf("%d, %d\n", input[id].start, input[id].end);
-    //for(int i = input[id].start; i<input[id].end; i++){
-     //   for(int j=0; j<col; j++)
-     //       next_matrix[i][j] = check_live(i, j, input_matrix);
-   // }
-   
+    int start =0;
+    used_proc_thread[0][id] = pthread_self();
+
+    for(int i=0; i<id; i++)
+        start+=rows[i];
+    for(int i = start; i<start+rows[id]; i++){
+        for(int j=0; j<col; j++)
+            next_matrix[i][j] = check_live(i, j, input_matrix);
+    }
     return 0;
 }
 
-void thread_parallel(int proc_thread, int *rows){
-    pthread_t *thread;
+void thread_parallel(int proc_thread, pthread_t *thread, int *thread_id){
+    
      //next matrix 동적 할당
     next_matrix = alloc_matrix(0, NULL);
     //thread 할당
-    thread = (pthread_t *)malloc(sizeof(pthread_t)*proc_thread);
-    //각 thread별로 인자를 넘길 구조체 동적할당
-    input = (Args *)malloc(sizeof(Args)*proc_thread);
-   
-    for(int i=0; i<proc_thread; i++){
-        if(i != 0){
-            input[i].start = input[i-1].end;
-            input[i].end = input[i-1].end + rows[i];
-        }else{
-            input[i].start = 0;
-            input[i].end = rows[i];
-        }
-    }
-     
-    for(int i=0; i<proc_thread; i++){
-        pthread_create(&thread[i], NULL, run_thread, (void *)&index);
-    }
-    
-    printf("in here\n");
+    for(int i=0; i<proc_thread; i++)
+        pthread_create(&thread[i], NULL, run_thread, (void *)&thread_id[i]);
     for(int i=0; i<proc_thread; i++)
         pthread_join(thread[i], NULL);
 
-    free(thread);
-    free(input); 
+}
+
+
+void print_used(int **used, int proc_thread){
+    printf("\nUsed Process ID\n");
+    for(int i=0; i<gen ; i++){
+        printf("gen[%d] : ", i+1);
+        for(int j=0; j<proc_thread; j++){
+            printf("%d", used[i][j]);
+            if(j != proc_thread-1)
+                printf(", ");
+        }
+        putchar('\n');
+    }
+    printf("total : %d\n", gen*proc_thread);
+
+    for(int i=0; i<gen; i++)
+        free(used[i]);
+    free(used);
 }

@@ -24,8 +24,9 @@ int main(int argc, char *argv[]){
                     exit(1);
                 case 0:
                     while(1){
-                        printf("%d\n", i);
                         sleep(5);
+                        printf("%d\n", i);
+                       
                     }
                 default:
                     //printf("pid : %d\n", pid[i]);

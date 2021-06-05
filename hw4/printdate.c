@@ -23,11 +23,8 @@ int main(int argc, char *argv[]){
                 if(count <= 5 && count > 0)
                     printf("강제 종료 %d초 전\n", count);
                 break;
-        }
-        
+        }   
         if(count == 0)
             raise(SIGKILL);
     }
-
-    
 }

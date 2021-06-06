@@ -17,7 +17,6 @@ int main(int argc, char *argv[]){
         int *pid = (int *)malloc(sizeof(int)*num_child);
 
         for(int i=0; i<num_child; i++){
-            
             switch(pid[i] = fork()){
                 case 1:
                     fprintf(stderr, "fork failed\n");
@@ -25,28 +24,22 @@ int main(int argc, char *argv[]){
                 case 0:
                     while(1){
                         sleep(5);
-                        printf("%d\n", i);
-                       
+                        printf("child %d\n", i);
                     }
                 default:
-                    //printf("pid : %d\n", pid[i]);
                     break;
             }
         }
-
         sleep(5);
-
         for(int i=num_child-1; i>=0; i--){
             kill(pid[i], SIGKILL);
-            printf("%d번째 Process[%d] 종료\n", i, pid[i]);
             sleep(1);
         }
-
         printf("프로그램 종료\n");
         raise(SIGKILL);
 
     }else{
-        fprintf(stderr, "myparent (number)");
+        fprintf(stderr, "myparent (number)\n");
         exit(1);
     }
 }

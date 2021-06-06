@@ -19,7 +19,7 @@ int *rows;
 
 int gen;
 long **used_proc_thread;
-int row, col; //row, col의 default 크기는 1이다.
+int row, col; 
 
 void copy_matrix(){
    for(int i=0; i<row; i++){
@@ -113,12 +113,11 @@ void write_matrix(int cur_gen, char **matrix){
     char filename[30];
     int row_size = col*2+2;
     char *rowbuf = malloc(sizeof(char)*row_size);
-    
-    char *dir = "./result/";
+
     if(cur_gen != gen)
-        sprintf(filename, "%sgen_%d.matrix", dir, cur_gen);
+        sprintf(filename, "gen_%d.matrix", cur_gen);
     else
-        sprintf(filename, "%soutput.matrix", dir);
+        sprintf(filename, "output.matrix");
 
     if((fp = fopen(filename, "w")) < 0 ){
         fprintf(stderr, "open error for %s\n", filename);
@@ -207,8 +206,6 @@ void proc_parallel(int cur_gen, int proc_thread) {
 
     while(wait(NULL)>0);
 }
-
-
 void *run_thread(void *data){
     int id = *((int *)data);
     int start =0;
@@ -259,7 +256,6 @@ int main(int argc, char *argv[]){
     long long elapsed;
     int op, proc_thread;
   
-
     while(1){
         if(argc < 1){
             fprintf(stderr, "Parameter Error\n");
